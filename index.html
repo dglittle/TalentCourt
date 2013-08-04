@@ -1,0 +1,728 @@
+<html>
+<head>
+<title>TalentCourt</title>
+<style>
+
+.fill {
+    width: 100%;
+    height: 100%;
+}
+
+table {
+    border-collapse: collapse;
+}
+th, td {
+    padding: 0;
+}
+    
+body {
+    font-family: Sans-Serif;
+}
+
+.left {
+    float: left;
+}
+
+.right {
+    float: right;
+}
+
+.clear {
+    clear: both;
+}
+
+.clickable {
+    font-size: small;
+    cursor: pointer;
+    color: grey;
+}
+
+.clickable:hover {
+    color: black;
+}
+
+.subtle {
+    font-size: small;
+}
+
+.highlight {
+    font-size: normal;
+    color: black;
+    font-weight: bold;
+}
+
+</style>
+
+<!-- Google Analytics -->
+<script type="text/javascript">
+
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-3118247-1']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+
+</script>
+
+</head>
+<body>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+<script src="/gl519/index.js"></script>
+<script src="/gl519/jquery.cookie.js"></script>
+<script src="/gl519/hashchange.js"></script>
+<script src="/gl519/tab.js"></script>
+<script src="/canvas.js"></script>
+<script>
+
+function onError(msg) {
+    alert((msg || 'Oops. Not sure what happened.') + '\n\n' +
+        'Please refresh the page.')
+}
+
+g_rpc_version = $.cookie('rpc_version')
+g_rpc_token = $.cookie('rpc_token')
+g_rpc_timer = null
+g_rpc = []
+
+function rpc(func, arg, cb) {
+    if (typeof(arg) == 'function') return rpc(func, null, arg)
+    g_rpc.push({
+        payload : { func : func, arg : arg },
+        cb : cb
+    })
+    if (g_rpc_timer) clearTimeout(g_rpc_timer)
+    g_rpc_timer = setTimeout(function () {
+        g_rpc_timer = null
+        var save_rpc = g_rpc
+        g_rpc = []
+        $.ajax({
+            url : '/rpc/' + g_rpc_version + '/' + g_rpc_token,
+            type : 'post',
+            data : _.json(_.map(save_rpc, function (e) { return e.payload })),
+            success : function (r) {
+                _.each(r, function (r, i) {
+                    if (save_rpc[i].cb)
+                        save_rpc[i].cb(r)
+                })
+            },
+            error : function (s) {
+                onError(s.responseText)
+            }
+        })
+    }, 0)
+}
+
+var width = 600
+var gap = 40
+var halfGap = gap / 2
+
+var colors = ['rgb(230, 230, 230)', 'rgb(210, 210, 210)', 'grey', 'black']
+
+currentTimeout = null
+currentInterval = null
+function myClearTimers() {
+    if (currentTimeout != null) {
+        clearTimeout(currentTimeout)
+        currentTimeout = null
+    }
+    if (currentInterval != null) {
+        clearInterval(currentInterval)
+        currentInterval = null
+    }
+}
+
+function mySetTimeout(func, time) {
+    currentTimeout = setTimeout(func, time)
+}
+
+function mySetInterval(func, time) {
+    currentInterval = setInterval(func, time)
+}
+
+function drawButton(text, func, w, h, r) {
+    if (!w) w = 100
+    if (!h) h = 30
+    if (!r) r = 15
+    return $('<div style="width:' + w + 'px;height:' + h + 'px;-moz-border-radius:' + r + 'px;border-radius:' + r + 'px;background:' + colors[0] + ';cursor:pointer;" />').myHover("background:" + colors[1]).append(center(typeof text == "string" ? $('<div/>').text(text) : text)).click(func)
+}
+
+function drawUser(u) {
+    var d
+    if (g_state.game) {
+        d = $('<div/>').
+            append($('<span class="clickable"/>').text(u._id).click(function () {
+                loadFragment({ game : g_state.game, func : 'view', user : u.key, sortBy : 'rating' })
+            }))
+    } else {
+        d = $('<div/>').
+            append($('<span class="subtle"/>').text(u._id))
+    }
+    if (g_state.user.key == u.key) {
+        d.append($('<span style="font-size:x-small">&nbsp;(you)</span>'))
+    }
+    return d
+}
+
+function drawHeader() {
+    var breadcrumbs = []
+    breadcrumbs.push($('<div class="left clickable"/>').text("TalentCourt").click(function () {
+        loadFragment({})
+    }))
+    if (g_state.game) {
+        breadcrumbs.push($('<div class="left subtle"/>').html('&nbsp;&raquo;&nbsp;'))
+        breadcrumbs.push($('<div class="left subtle"/>').text(g_state.game))
+    }
+    
+    var d = $('<div style="border-bottom:1px solid black;margin-bottom:' + gap + 'px"/>').myAppend([
+        breadcrumbs,
+        $('<div class="right"/>').append(drawUser(g_state.user))
+    ])
+    if (g_state.game) {
+        d.append($('<div class="right" style="width:40px;height:1px"/>'))
+        d.append($('<div class="right clickable"/>').text('recent').click(function () {
+            loadFragment({ game : g_state.game, func : 'view', sortBy : 'time'})
+        }))
+        d.append($('<div class="right" style="width:40px;height:1px"/>'))
+        d.append($('<div class="right clickable"/>').text('best').click(function () {
+            loadFragment({ game : g_state.game, func : 'view', sortBy : 'rating'})
+        }))
+        d.append($('<div class="right" style="width:40px;height:1px"/>'))
+        d.append($('<div class="right clickable"/>').text('play').click(function () {
+            loadFragment(g_state.playState)
+        }))
+    }
+    d.append($('<div class="clear"/>'))
+    return d
+}
+
+function drawFooter() {
+    return $('<div style="width: 600px;margin-left: auto;margin-right: auto;margin-top: ' + gap + 'px;font-size: small;color: ' + colors[0] + ';border-top: 1px solid ' + colors[0] + ';text-align: center;">&nbsp;</div>')
+}
+
+function getVotesBeforeCompete() {
+    if (g_state.game == "writing") return 4
+    else return 6
+}
+
+function drawSpots() {
+    var votes = getVotesBeforeCompete()
+    
+    var w = (votes * (20 + gap)) + (40 + gap)
+    var div = $('<div style="padding-top:' + gap + 'px;width:' + w + 'px;margin-left:auto;margin-right:auto" />')
+    
+    for (var i = 1; i <= votes + 1; i++) {
+        var r = (i <= votes ? 10 : 20)
+        var d = 2 * r
+        var top = halfGap - r
+        var spot = $('<div style="-moz-border-radius: ' + r + 'px;border-radius: ' + r + 'px;width: ' + d + 'px;height: ' + d + 'px;margin-top: ' + top + 'px;margin-left: ' + halfGap + 'px;margin-right: ' + halfGap + 'px;background: ' + colors[0] + ';float: left;" />')
+        if (Math.min(g_state.playState, votes + 1) == i)
+            spot.css('background', 'black')
+        div.append(spot)
+    }
+    div.append($('<div class="clear"/>'))
+    
+    return div
+}
+
+function drawConfirmCompete(noVotes) {
+    var s = {
+        "drawing" : {
+            word : "draw",
+            prompt : "you'll be given 5 minutes to draw a random word"
+        },
+        "writing" : {
+            word : "write",
+            prompt : "you'll be given 5 minutes to write a short passage involving 3 random words"
+        }
+    }[g_state.game]
+    
+    function myButton(text, func) {
+        return drawButton(text, func, 150, 70, 30).myCss('margin-top:20px;padding:20px')
+    }
+    
+    var b = $('<div/>').text("I'm ready to ")
+    var toWhat = $('<span/>').text(s.word + "!")
+    b.append(toWhat)
+    
+    return $('<div style="width:400px;height:250px;margin-left:auto;margin-right:auto" />').myAppend([
+        noVotes ?
+            $('<p/>').text('hm.. nothing to vote on just now..') :
+            $('<div/>'),
+        $('<p/>').text("it is time to " + s.word + "! " + s.prompt),
+        myButton(b, function () {
+            loadFragment(101)
+        }).addClass('left'),
+        myButton("not yet, I'd rather vote some more...", function () {
+            loadFragment(1)
+        }).addClass('right'),
+        $('<div class="clear"/>')
+    ])
+}
+
+function isVowel(a) {
+    return a.match(/[aeiou]/)
+}
+
+function getArticle(word) {
+    return isVowel(word.substring(0, 1)) ? "an" : "a"
+}
+
+function addArticle(word) {
+    return getArticle(word) + " " + word
+}
+
+function drawPad() {
+    if (g_state.game == 'drawing') {
+        return drawDrawingPad(g_state.entry, g_state.serverTime)
+    } else if (g_state.game == 'writing') {
+        return drawWritingPad(g_state.entry, g_state.serverTime)
+    }
+}
+
+function updateTimer(div, deadline) {
+    function readableCountdown(t) {
+        var sec = 1000
+        var min = 60 * sec
+        var hour = 60 * min
+        
+        if (t >= hour) throw "not implemented"
+        var mins = Math.floor(t / min)
+        var secs = Math.floor((t % min) / sec)
+        
+        return mins + ":" + (secs < 10 ? "0" : "") + secs
+    }
+    mySetInterval(function () {
+        var timeLeft = deadline - time()
+        if (timeLeft <= 0) {
+            myClearTimers()
+            alert("time up!")
+            loadFragment(1)
+            return
+        }
+        $('.timer', div).css('color', 'black').css('font-size', 'medium').html(readableCountdown(timeLeft))
+    }, 250)
+}
+
+function drawDrawingPad(e, serverTime) {
+    
+    var pad = createCanvas().myCss('margin-top: 5px;border: 1px solid ' + colors[0] + ';')
+    pad.find('.tools').myCss('background: ' + colors[0] + ';')
+    
+    var div = $('<div style="width: 452px;margin-left: auto;margin-right: auto;" />').myAppend([
+        $('<div/>').html('<span style="subtle">draw ' + escapeXml(getArticle(e.prompt.text)) + ' <span class="highlight">' + escapeXml(e.prompt.text) + '</span>. time left: <span class="timer"></span>'),
+        pad
+    ])
+    
+    updateTimer(div, e.deadline - (serverTime - time()))
+    
+    div.append(drawButton('submit', function () {
+        myClearTimers()
+        
+        var w = div.width()
+        var h = div.height()
+        div.empty().append($('<div/>').css({
+            width : w + "px",
+            height : h + "px",
+            'text-align' : 'center'
+        }).append($('<img/>').attr('src', 'throbber.gif').css({
+            'margin' : 'auto'
+        })))
+        
+        loadFragment(1, {
+            func : "submit",
+            game : g_state.game,
+            strokes : pad.getStrokes(),
+            png : pad.getPng()
+        })
+    }).myCss('margin-top:10px;margin-bottom:30px;margin-left:auto;margin-right:auto;'))
+    return div
+}
+
+function drawKeywordPad(type, e, serverTime) {
+    var div = $('<div style="width: 400px;margin-left: auto;margin-right: auto;" />').myAppend([
+        $('<div/>').html('<span style="subtle">write a ' + (type == 'writing' ? 'passage' : 'code snippet') + ' using the words <span class="highlight word1"></span>, <span class="highlight word2"></span> and <span class="highlight word3"></span>. time left: <span class="timer"></span>'),
+        $('<div style="margin-top: 20px;margin-bottom: 20px;" />').myAppend([
+            $('<textarea class="input" style="width: 400px;height: 100px;" />'),
+            $('<div class="inputStats subtle"/>') 
+        ])
+    ])
+    
+    var words = e.prompt.text.split(/ /)
+    foreach(words, function (word, i) {
+        $('.word' + (i + 1), div).text(word)
+    })
+    
+    updateTimer(div, e.deadline - (serverTime - time()))
+    
+    var submitButton = drawButton('submit', function () {
+        if (!$(this).hasClass('disabled')) {
+            myClearTimers()
+            loadFragment(1, {
+                func : "submit",
+                game : g_state.game,
+                text : $('.input', div).val()
+            })
+        }
+    }).myCss('margin-top:10px;margin-bottom:30px;;margin-left:auto;margin-right:auto;')
+    div.append(submitButton)
+    
+    function updateInputStats() {
+        var text = $('.input', div).val()
+        var chars = text.length
+        var s = null
+        
+        if (chars < e.prompt.textMin) {
+            s = "must write more"
+        } else if (chars > e.prompt.textMax) {
+            s = "too long. must remove " + (chars - e.prompt.textMax) + " character" + ((chars - e.prompt.textMax) != 1 ? "s" : "")
+        } else {
+            var wordsNeeded = []
+            foreach(words, function (word) {
+                if (!text.match(new RegExp(escapeRegex(word), "i"))) {
+                    wordsNeeded.push(word)
+                }
+            })
+            if (wordsNeeded.length == 1) {
+                s = "must include the word: " + wordsNeeded[0]
+            }
+            if (wordsNeeded.length > 1) {
+                s = "must include the words: " + wordsNeeded.slice(0, wordsNeeded.length - 1).join(", ") + " and " + wordsNeeded[wordsNeeded.length - 1]
+            }
+        }
+
+        if (s) {
+            submitButton.addClass('disabled')
+        } else {
+            submitButton.removeClass('disabled')
+            s = "good. " + (e.prompt.textMax - chars) + " character" + ((e.prompt.textMax - chars) != 1 ? "s" : "") + " left"
+        }
+        
+        $('.inputStats', div).html(s)
+    }
+    $('.input', div).keydown(updateInputStats).keyup(updateInputStats)
+    updateInputStats()
+    
+    return div
+}
+
+function drawWritingPad(e, serverTime) {
+    return drawKeywordPad('writing', e, serverTime)
+}
+
+function drawSkip(es) {
+    return $('<div style="text-align:center;margin-top:' + halfGap + 'px" />').append($('<span class="clickable" />').html("skip &raquo;").click(function () {
+        loadFragment(g_state.playState + 1, {
+            func : 'vote',
+            game : g_state.game,
+            entries : [es[0].key, es[1].key],
+            x : 0.5
+        })
+    }))
+}
+
+function drawEntry(e, func) {
+    var flagged = e.flaggedByMe
+    
+    var d = $('<div style="width:250px;-moz-border-radius: 10px;border-radius: 10px;padding: 20px;background:' + colors[0] + '"/>')
+    if (g_state.game == 'drawing') {
+        var dest = $('<div/>').text('loading...').css({
+            'text-align' : 'center',
+            'display' : 'table-cell',
+            'vertical-align' : 'middle',
+            'width' : '250px',
+            'height' : '166px',
+            'background' : colors[0]
+        })
+        
+        var img = $('<img/>').attr({
+            'src' : e.data.png,
+            'height' : '166px'
+        }).css({
+            'margin' : 'auto'
+        }).load(function () {
+            dest.empty().append(img).css('background', 'white')
+        })
+        
+        d.append(dest)
+    } else if (g_state.game == 'writing') {
+        d.append($('<div/>').html(escapeXml(e.data.text).replace(new RegExp(escapeRegex(e.prompt.text).replace(/ /g, '|'), "gi"), function (g0) {
+            return '<span class="highlight">' + g0 + '</span>'
+        }).replace(/\n/g, '<br/>').replace(/\t| {2,}/g, function (g0) {
+            if (g0 == '\t') {
+                return '&nbsp;&nbsp;&nbsp;&nbsp;'
+            } else {
+                return g0.replace(/ /g, '&nbsp;')
+            }
+        })))
+    }
+    var info = $('<div style="margin-top: 5px;" />')
+    if (g_state.game == 'drawing') {
+        info.append($('<div class="left subtle"/>').text(e.prompt.text))
+    }
+    
+    function onFlag() {
+        var oldFunc = func
+        func = null
+        
+        var inst
+        if (e.prompt.textMax) {
+            var words = e.prompt.text.split(/ /)
+            inst = 'it should be a passage containing the words \'' + words[0] + '\', \'' + words[1] + '\' and \'' + words[2] + '\''
+        } else {
+            inst = 'it should be a drawing of ' + getArticle(e.prompt.text) + ' ' + e.prompt.text
+        }
+            
+        openDialog($('<div style="padding:20px"/>').
+            append('<div>flag this entry if:<ul><li style="margin-bottom:10px">it does not follow instructions<br/>(' + inst + '),</li><li>or it is inappropriate</li></ul></div>').
+            append(drawButton('flag', function () {
+                closeDialog()
+                loadFragment(null, {
+                    func : 'setFlag',
+                    game : g_state.game,
+                    entry : e.key,
+                    flag : true
+                })
+            }).myCss('float:left;margin-right:20px')).
+            append(drawButton('cancel', function () {
+                closeDialog()
+                func = oldFunc
+            }).myCss('float:left')).
+            append($('<div style="clear:both"/>')))
+    }
+    if (!flagged) {
+        info.append($('<div class="right clickable flag" title="flag this entry"/>').text("\u2690").click(onFlag))
+    } else {
+        info.append($('<div class="right clickable flag" title="remove flag from this entry" />').text("\u2691").click(function () {
+            var oldFunc = func
+            func = null
+            openDialog($('<div style="padding:20px"/>').
+                append('<div style="margin-bottom:20px">If you flagged this in error, you can unflag it.</div>').
+                append(drawButton('un flag', function () {
+                    closeDialog()
+                    loadFragment(null, {
+                        func : 'setFlag',
+                        game : g_state.game,
+                        entry : e.key,
+                        flag : false
+                    })
+                }).myCss('float:left;margin-right:20px')).
+                append(drawButton('cancel', function () {
+                    closeDialog()
+                    func = oldFunc
+                }).myCss('float:left;margin-right:20px')).
+                append($('<div style="clear:both"/>')))
+        }))
+    }
+    
+    if (!func) {
+        if (g_state.game == 'drawing') {
+            info.append($('<div class="left subtle"/>').html("&nbsp;by&nbsp;"))
+        }
+        info.append(drawUser(e.user).addClass('left'))
+        info.append($('<div class="right subtle"/>').html("&nbsp&nbsp;"))
+        info.append($('<div class="right subtle"/>').text(sprintf('%3.0f', e.glicko.min)))
+    } else {
+        if (g_state.game == "drawing") {
+            info.append($('<div class="right"/>').html("&nbsp&nbsp;"))
+            info.append($('<div class="right clickable"/>').text('not ' + getArticle(e.prompt.text) + ' ' + e.prompt.text + '?').click(onFlag))
+        }
+        
+        d.css('cursor', 'pointer').myHover("background:" + colors[1]).click(function () {
+            if (func) func()
+        })
+    }
+    
+    info.append($('<div class="clear"/>'))
+    d.append(info)
+    return d
+}
+
+function drawVote(es) {
+    var div = $('<div/>')
+    
+    shuffle(es)
+    
+    return $('<div/>').myAppend([
+        $('<div class="subtle" style="width:100%;text-align:center;margin-bottom:20px"/>').text('Which ' + (g_state.game == 'writing' ? 'writer' : 'artist') + ' would you hire?'),
+        map(es, function (e, i) {
+            return $('<div/>').addClass(i == 0 ? 'left' : 'right').append( drawEntry(e, function () {
+                loadFragment(g_state.playState + 1, {
+                    func : 'vote',
+                    game : g_state.game,
+                    entries : [es[0].key, es[1].key],
+                    x : i
+                })
+            }))
+        }),
+        $('<div class="clear"/>')
+    ])
+}
+
+function drawPaging(onStart, onPrev, onNext, onEnd) {
+    if (!onStart && !onPrev && !onNext && !onEnd)
+        return $('<div/>')
+    var div = $('<div style="margin-top: -30px;margin-bottom: 10px;background:white"/>')
+    function func(a, b, f, s) {
+        var d = $('<div style="' + s + 'background:' + colors[0] + ';height: 20px;-moz-border-radius: 5px;border-radius: 5px;padding-left: 5px;padding-right: 5px;cursor: pointer;" />').addClass(a).html(b)
+        if (f) {
+            d.myHover('background: ' + colors[1] + ';').click(f)
+        } else {
+            d.myCss('background:white;color: ' + colors[1] + ';cursor: default;')
+        }
+        div.append(d)
+    }
+    func('left', '|&larr;', onStart, 'margin-right:10px;')
+    func('left', '&larr;', onPrev, 'margin-right:10px;')
+    func('right', '&rarr;|', onEnd, 'margin-left:10px;')
+    func('right', '&rarr;', onNext, 'margin-left:10px;')
+    div.append($('<div class="clear"/>'))
+    return div
+}
+
+function drawView() {
+    var div = $('<div />')
+    
+    var q = {
+        game : g_state.game,
+        func : 'view',
+        sortBy : g_state.sortBy
+    }
+    if (g_state.entry)
+        q.entry = g_state.entry.key
+    if (g_state.targetUser)
+        q.user = g_state.targetUser.key
+    
+    div.append(drawPaging(g_state.start <= 0 ? null : function () {
+        q.start = 0
+        loadFragment(q)
+    }, g_state.start <= 0 ? null : function () {
+        q.start = Math.max(0, g_state.start - 10)
+        loadFragment(q)
+    }, g_state.end >= g_state.total ? null : function () {
+        q.start = g_state.end
+        loadFragment(q)
+    }, g_state.end >= g_state.total ? null : function () {
+        q.start = Math.max(0, g_state.total - 10)
+        loadFragment(q)
+    }))
+    
+    if (g_state.entries.length > 0) {
+        foreach(g_state.entries, function (e, i) {
+            div.append(drawEntry(e).myCss('margin-bottom:' + gap + 'px'))
+        })
+    } else {
+        div.append($('<div class="subtle"/>').text('nothing to see here'))
+    }
+    return div
+}
+
+function drawChooseGame() {
+    var div = $('<div/>')
+    
+    div.append(drawButton('writing', function () {
+        g_state.game = 'writing'
+        loadFragment(1)
+    }).myCss('margin-top: 10px;margin-bottom: 30px;width: 100px;margin-left: auto;margin-right: auto;'))
+    div.append(drawButton('drawing', function () {
+        g_state.game = 'drawing'
+        loadFragment(1)
+    }).myCss('margin-top: 10px;margin-bottom: 30px;width: 100px;margin-left: auto;margin-right: auto;'))
+    
+    return div
+}
+
+function ensureSlash(s) {
+    return s.match(/\/$/) ? s : (s + '/') 
+}
+
+var g_post
+var g_state = { playState : 1 }
+var g_shield
+
+function loadFragment(q, post) {
+    if (post) g_post = post
+    if (q) {
+        if (typeof(q) == "number") {
+            g_state.playState = q
+            var votes = getVotesBeforeCompete()
+            if (q <= votes) {
+                q = { func : "pickVote" }
+            } else if (q > votes && q < 100) {
+                q = { func : "confirmCompete" }
+            } else {
+                q = { func : "compete" }
+            }
+            q.game = g_state.game
+        }
+    }
+
+    myClearTimers()
+    
+    // shield up
+    if (g_shield) g_shield.remove()
+    var win = $(window)
+    var w = win.width()
+    var h = win.height()
+    g_shield = $('<div style="position:fixed;left:0px;top:0px; z-index:1000;background:black;opacity:0"/>').width(w).height(h)
+    g_shield.click(function () {
+        openDialog($('<div style="padding:20px"/>').text('sorry, I was still loading... one sec..'))
+    })
+    $('body').append(g_shield)
+    
+    rpc('main', { q : q, post : g_post }, function (o) {
+            
+        // shield down
+        closeDialog()
+        if (g_shield) g_shield.remove()
+        
+        g_post = null
+        o.playState = g_state.playState
+        g_state = o
+        
+        var div = $('<div/>')
+        div.append(drawHeader())
+        
+        if (o.kind == "choose") {
+            div.append(drawChooseGame())
+        } else if (o.kind == "view") {
+            div.append(drawView())
+        } else {
+            var d = $('<div/>')
+            if (o.kind == "vote") {
+                if (o.entries) {
+                    d.append(drawVote(o.entries))
+                    d.append(drawSkip(o.entries))
+                } else {
+                    o.kind = "confirmCompete"
+                    o.playState = getVotesBeforeCompete() + 1
+                    d.append(drawConfirmCompete(true))
+                }
+            } else if (o.kind == "confirmCompete") {
+                o.playState = getVotesBeforeCompete() + 1
+                d.append(drawConfirmCompete(false))
+            } else if (o.kind == "compete") {
+                o.playState = 101
+                d.append(drawPad())
+            } 
+            div.append(d)
+            div.append(drawSpots())
+        }
+        div.append(drawFooter())
+        var content = $('.content').empty().append(div)
+    })
+}
+
+$(function () {
+    loadFragment()
+})
+
+</script>
+
+<div class="content" style="width:600px;margin-left:auto;margin-right:auto"></div>
+
+</body>
+</html>
