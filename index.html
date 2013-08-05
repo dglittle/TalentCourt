@@ -80,7 +80,7 @@ body {
 
 function onError(msg) {
     alert((msg || 'Oops. Not sure what happened.') + '\n\n' +
-        'Please refresh the page.')
+        'Please try refreshing the page.')
 }
 
 g_rpc_version = $.cookie('rpc_version')
@@ -115,6 +115,66 @@ function rpc(func, arg, cb) {
         })
     }, 0)
 }
+
+///
+
+if (typeof($) != "undefined") {
+    $.fn.myAppend = function (args) {
+        for (var i = 0; i < arguments.length; i++) {
+            var a = arguments[i]
+            if (a instanceof Array)
+                $.fn.myAppend.apply(this, a)
+            else
+                this.append(a)
+        }
+        return this
+    }
+    
+    function cssMap(s) {
+        var m = {}
+        _.each(s.split(';'), function (s) {
+            var a = s.split(':')
+            if (a[0])
+                m[_.trim(a[0])] = _.trim(a[1])
+        })
+        return m
+    }
+    
+    $.fn.myCss = function (s) {
+        return this.css(cssMap(s))
+    }
+    
+    $.fn.myHover = function (s, that) {
+        var that = that || this
+        var m = cssMap(s)
+        var old = _.map(m, function (v, k) {
+            return that.css(k)
+        })
+        this.hover(function () {
+            that.css(m)
+        }, function () {
+            that.css(old)
+        })
+        return this
+    }
+    
+    $.fn.addLabel = function (d) {
+        if (typeof(d) == "string") d = $('<span/>').text(d)
+            
+        var id = randomIdentifier(10)
+        this.attr('id', id)
+        this.after($('<label for="' + id + '"/>').append(d))
+        return this
+    }
+}
+
+center = function (d) {
+    var div = $('<table style="width:100%;height:100%"><tr><td valign="center" align="center"></td></tr></table>')
+    div.find('td').append(d)
+    return div
+}
+
+///
 
 var width = 600
 var gap = 40
@@ -154,14 +214,14 @@ function drawUser(u) {
     var d
     if (g_state.game) {
         d = $('<div/>').
-            append($('<span class="clickable"/>').text(u._id).click(function () {
-                loadFragment({ game : g_state.game, func : 'view', user : u.key, sortBy : 'rating' })
+            append($('<span class="clickable"/>').text(u.name).click(function () {
+                loadFragment({ game : g_state.game, func : 'view', user : u._id, sortBy : 'rating' })
             }))
     } else {
         d = $('<div/>').
-            append($('<span class="subtle"/>').text(u._id))
+            append($('<span class="subtle"/>').text(u.name))
     }
-    if (g_state.user.key == u.key) {
+    if (g_state.user._id == u._id) {
         d.append($('<span style="font-size:x-small">&nbsp;(you)</span>'))
     }
     return d
@@ -296,7 +356,7 @@ function updateTimer(div, deadline) {
         return mins + ":" + (secs < 10 ? "0" : "") + secs
     }
     mySetInterval(function () {
-        var timeLeft = deadline - time()
+        var timeLeft = deadline - _.time()
         if (timeLeft <= 0) {
             myClearTimers()
             alert("time up!")
@@ -313,11 +373,11 @@ function drawDrawingPad(e, serverTime) {
     pad.find('.tools').myCss('background: ' + colors[0] + ';')
     
     var div = $('<div style="width: 452px;margin-left: auto;margin-right: auto;" />').myAppend([
-        $('<div/>').html('<span style="subtle">draw ' + escapeXml(getArticle(e.prompt.text)) + ' <span class="highlight">' + escapeXml(e.prompt.text) + '</span>. time left: <span class="timer"></span>'),
+        $('<div/>').html('<span style="subtle">draw ' + _.escapeXml(getArticle(e.prompt.text)) + ' <span class="highlight">' + _.escapeXml(e.prompt.text) + '</span>. time left: <span class="timer"></span>'),
         pad
     ])
     
-    updateTimer(div, e.deadline - (serverTime - time()))
+    updateTimer(div, e.deadline - (serverTime - _.time()))
     
     div.append(drawButton('submit', function () {
         myClearTimers()
@@ -352,11 +412,11 @@ function drawKeywordPad(type, e, serverTime) {
     ])
     
     var words = e.prompt.text.split(/ /)
-    foreach(words, function (word, i) {
+    _.each(words, function (word, i) {
         $('.word' + (i + 1), div).text(word)
     })
     
-    updateTimer(div, e.deadline - (serverTime - time()))
+    updateTimer(div, e.deadline - (serverTime - _.time()))
     
     var submitButton = drawButton('submit', function () {
         if (!$(this).hasClass('disabled')) {
@@ -381,8 +441,8 @@ function drawKeywordPad(type, e, serverTime) {
             s = "too long. must remove " + (chars - e.prompt.textMax) + " character" + ((chars - e.prompt.textMax) != 1 ? "s" : "")
         } else {
             var wordsNeeded = []
-            foreach(words, function (word) {
-                if (!text.match(new RegExp(escapeRegex(word), "i"))) {
+            _.each(words, function (word) {
+                if (!text.match(new RegExp(_.escapeRegExp(word), "i"))) {
                     wordsNeeded.push(word)
                 }
             })
@@ -418,7 +478,7 @@ function drawSkip(es) {
         loadFragment(g_state.playState + 1, {
             func : 'vote',
             game : g_state.game,
-            entries : [es[0].key, es[1].key],
+            entries : [es[0]._id, es[1]._id],
             x : 0.5
         })
     }))
@@ -428,36 +488,40 @@ function drawEntry(e, func) {
     var flagged = e.flaggedByMe
     
     var d = $('<div style="width:250px;-moz-border-radius: 10px;border-radius: 10px;padding: 20px;background:' + colors[0] + '"/>')
-    if (g_state.game == 'drawing') {
-        var dest = $('<div/>').text('loading...').css({
-            'text-align' : 'center',
-            'display' : 'table-cell',
-            'vertical-align' : 'middle',
-            'width' : '250px',
-            'height' : '166px',
-            'background' : colors[0]
-        })
-        
-        var img = $('<img/>').attr({
-            'src' : e.data.png,
-            'height' : '166px'
-        }).css({
-            'margin' : 'auto'
-        }).load(function () {
-            dest.empty().append(img).css('background', 'white')
-        })
-        
-        d.append(dest)
-    } else if (g_state.game == 'writing') {
-        d.append($('<div/>').html(escapeXml(e.data.text).replace(new RegExp(escapeRegex(e.prompt.text).replace(/ /g, '|'), "gi"), function (g0) {
-            return '<span class="highlight">' + g0 + '</span>'
-        }).replace(/\n/g, '<br/>').replace(/\t| {2,}/g, function (g0) {
-            if (g0 == '\t') {
-                return '&nbsp;&nbsp;&nbsp;&nbsp;'
-            } else {
-                return g0.replace(/ /g, '&nbsp;')
-            }
-        })))
+    if (!flagged) {
+        if (g_state.game == 'drawing') {
+            var dest = $('<div/>').text('loading...').css({
+                'text-align' : 'center',
+                'display' : 'table-cell',
+                'vertical-align' : 'middle',
+                'width' : '250px',
+                'height' : '166px',
+                'background' : colors[0]
+            })
+            
+            var img = $('<img/>').attr({
+                'src' : e.data.png,
+                'height' : '166px'
+            }).css({
+                'margin' : 'auto'
+            }).load(function () {
+                dest.empty().append(img).css('background', 'white')
+            })
+            
+            d.append(dest)
+        } else if (g_state.game == 'writing') {
+            d.append($('<div/>').html(_.escapeXml(e.data.text).replace(new RegExp(_.escapeRegExp(e.prompt.text).replace(/ /g, '|'), "gi"), function (g0) {
+                return '<span class="highlight">' + g0 + '</span>'
+            }).replace(/\n/g, '<br/>').replace(/\t| {2,}/g, function (g0) {
+                if (g0 == '\t') {
+                    return '&nbsp;&nbsp;&nbsp;&nbsp;'
+                } else {
+                    return g0.replace(/ /g, '&nbsp;')
+                }
+            })))
+        }
+    } else {
+        d.append($('<div style="padding:10px;background:black;color:white;font-weight:bold" />').text('censored'))
     }
     var info = $('<div style="margin-top: 5px;" />')
     if (g_state.game == 'drawing') {
@@ -476,19 +540,19 @@ function drawEntry(e, func) {
             inst = 'it should be a drawing of ' + getArticle(e.prompt.text) + ' ' + e.prompt.text
         }
             
-        openDialog($('<div style="padding:20px"/>').
+        _.dialog($('<div style="padding:20px"/>').
             append('<div>flag this entry if:<ul><li style="margin-bottom:10px">it does not follow instructions<br/>(' + inst + '),</li><li>or it is inappropriate</li></ul></div>').
             append(drawButton('flag', function () {
-                closeDialog()
+                _.closeDialog()
                 loadFragment(null, {
                     func : 'setFlag',
                     game : g_state.game,
-                    entry : e.key,
+                    entry : e._id,
                     flag : true
                 })
             }).myCss('float:left;margin-right:20px')).
             append(drawButton('cancel', function () {
-                closeDialog()
+                _.closeDialog()
                 func = oldFunc
             }).myCss('float:left')).
             append($('<div style="clear:both"/>')))
@@ -499,19 +563,19 @@ function drawEntry(e, func) {
         info.append($('<div class="right clickable flag" title="remove flag from this entry" />').text("\u2691").click(function () {
             var oldFunc = func
             func = null
-            openDialog($('<div style="padding:20px"/>').
+            _.dialog($('<div style="padding:20px"/>').
                 append('<div style="margin-bottom:20px">If you flagged this in error, you can unflag it.</div>').
                 append(drawButton('un flag', function () {
-                    closeDialog()
+                    _.closeDialog()
                     loadFragment(null, {
                         func : 'setFlag',
                         game : g_state.game,
-                        entry : e.key,
+                        entry : e._id,
                         flag : false
                     })
                 }).myCss('float:left;margin-right:20px')).
                 append(drawButton('cancel', function () {
-                    closeDialog()
+                    _.closeDialog()
                     func = oldFunc
                 }).myCss('float:left;margin-right:20px')).
                 append($('<div style="clear:both"/>')))
@@ -524,7 +588,7 @@ function drawEntry(e, func) {
         }
         info.append(drawUser(e.user).addClass('left'))
         info.append($('<div class="right subtle"/>').html("&nbsp&nbsp;"))
-        info.append($('<div class="right subtle"/>').text(sprintf('%3.0f', e.glicko.min)))
+        info.append($('<div class="right subtle"/>').text(Math.round(e.glicko.min)))
     } else {
         if (g_state.game == "drawing") {
             info.append($('<div class="right"/>').html("&nbsp&nbsp;"))
@@ -544,16 +608,16 @@ function drawEntry(e, func) {
 function drawVote(es) {
     var div = $('<div/>')
     
-    shuffle(es)
+    _.shuffle(es)
     
     return $('<div/>').myAppend([
         $('<div class="subtle" style="width:100%;text-align:center;margin-bottom:20px"/>').text('Which ' + (g_state.game == 'writing' ? 'writer' : 'artist') + ' would you hire?'),
-        map(es, function (e, i) {
+        _.map(es, function (e, i) {
             return $('<div/>').addClass(i == 0 ? 'left' : 'right').append( drawEntry(e, function () {
                 loadFragment(g_state.playState + 1, {
                     func : 'vote',
                     game : g_state.game,
-                    entries : [es[0].key, es[1].key],
+                    entries : [es[0]._id, es[1]._id],
                     x : i
                 })
             }))
@@ -592,9 +656,9 @@ function drawView() {
         sortBy : g_state.sortBy
     }
     if (g_state.entry)
-        q.entry = g_state.entry.key
+        q.entry = g_state.entry._id
     if (g_state.targetUser)
-        q.user = g_state.targetUser.key
+        q.user = g_state.targetUser._id
     
     div.append(drawPaging(g_state.start <= 0 ? null : function () {
         q.start = 0
@@ -611,7 +675,7 @@ function drawView() {
     }))
     
     if (g_state.entries.length > 0) {
-        foreach(g_state.entries, function (e, i) {
+        _.each(g_state.entries, function (e, i) {
             div.append(drawEntry(e).myCss('margin-bottom:' + gap + 'px'))
         })
     } else {
@@ -642,6 +706,7 @@ function ensureSlash(s) {
 var g_post
 var g_state = { playState : 1 }
 var g_shield
+var g_prev_q
 
 function loadFragment(q, post) {
     if (post) g_post = post
@@ -658,7 +723,10 @@ function loadFragment(q, post) {
             }
             q.game = g_state.game
         }
+    } else {
+        q = g_prev_q
     }
+    g_prev_q = q
 
     myClearTimers()
     
@@ -669,14 +737,15 @@ function loadFragment(q, post) {
     var h = win.height()
     g_shield = $('<div style="position:fixed;left:0px;top:0px; z-index:1000;background:black;opacity:0"/>').width(w).height(h)
     g_shield.click(function () {
-        openDialog($('<div style="padding:20px"/>').text('sorry, I was still loading... one sec..'))
+        _.dialog($('<div style="padding:20px"/>').text('sorry, I was still loading... one sec..'))
     })
     $('body').append(g_shield)
     
     rpc('main', { q : q, post : g_post }, function (o) {
             
         // shield down
-        closeDialog()
+        if (_.closeDialog)
+            _.closeDialog()
         if (g_shield) g_shield.remove()
         
         g_post = null
@@ -717,7 +786,7 @@ function loadFragment(q, post) {
 }
 
 $(function () {
-    loadFragment()
+    loadFragment({})
 })
 
 </script>
