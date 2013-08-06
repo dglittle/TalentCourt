@@ -357,14 +357,29 @@ _.run(function () {
                 timeLimit : 5 * 60 * 1000
             }
         }
-
-        var s3 = new (require('./s3.js').s3)(process.env.AWS_ID, process.env.AWS_SECRET, process.env.S3_BUCKET)
         
+        var mongodb = require('mongodb')
+
         function getEntryData(q, p) {
-            var data = {}
             var id = _.randomString(10)
-            data.strokes = s3.put('/strokes/' + id + '.json', q.strokes, true)
-            data.png = s3.put('/sketches/' + id + '.png', new Buffer(q.png, 'base64'), true)
+            var data = {
+                png : 'pngs/' + id + '.png',
+                strokes : 'strokes/' + id + '.json'
+            }
+            _.parallel([
+                function () {
+                    _.p(db.collection('pngs').insert({
+                        _id : id,
+                        data : mongodb.Binary(new Buffer(q.png, 'base64'))
+                    }))
+                },
+                function () {
+                    _.p(db.collection('strokes').insert({
+                        _id : id,
+                        data : q.strokes
+                    }))
+                }
+            ])
             return data
         }
         
@@ -474,6 +489,20 @@ _.run(function () {
         _.p(db.collection('objs').update({ _id : u._id }, u, _.p()))
         return ret
     }
+
+    app.get(/\/pngs\/(.*?)\.png/, function (req, res) {
+        _.run(function () {
+            res.contentType('image/png')
+            res.end(_.p(db.collection('pngs').findOne({ _id : req.params[0] }, _.p())).data.buffer, 'binary')
+        })
+    })
+
+    app.get(/\/strokes\/(.*?)\.json/, function (req, res) {
+        _.run(function () {
+            res.contentType('application/json')
+            res.end(_.p(db.collection('strokes').findOne({ _id : req.params[0] }, _.p())).data)
+        })
+    })
 
     app.use(express.errorHandler({
         dumpExceptions: true,
