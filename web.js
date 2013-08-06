@@ -490,17 +490,25 @@ _.run(function () {
         return ret
     }
 
-    app.get(/\/pngs\/(.*?)\.png/, function (req, res) {
+    app.get(/\/pngs\/(.*?)\.png/, function (req, res, next) {
         _.run(function () {
-            res.contentType('image/png')
-            res.end(_.p(db.collection('pngs').findOne({ _id : req.params[0] }, _.p())).data.buffer, 'binary')
+            try {
+                res.contentType('image/png')
+                res.end(_.p(db.collection('pngs').findOne({ _id : req.params[0] }, _.p())).data.buffer, 'binary')
+            } catch (e) {
+                next(e)
+            }
         })
     })
 
-    app.get(/\/strokes\/(.*?)\.json/, function (req, res) {
+    app.get(/\/strokes\/(.*?)\.json/, function (req, res, next) {
         _.run(function () {
-            res.contentType('application/json')
-            res.end(_.p(db.collection('strokes').findOne({ _id : req.params[0] }, _.p())).data)
+            try {
+                res.contentType('application/json')
+                res.end(_.p(db.collection('strokes').findOne({ _id : req.params[0] }, _.p())).data)
+            } catch (e) {
+                next(e)
+            }
         })
     })
 
